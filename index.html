@@ -1,0 +1,536 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Turn Clock</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #181b22;
+    --panel-2: #20242d;
+    --text: #e9ecf2;
+    --muted: #8a93a6;
+    --accent: #4ade80;
+    --accent-ink: #052e14;
+    --warn: #fbbf24;
+    --danger: #f87171;
+    --radius: 14px;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+  }
+  button, input { font: inherit; color: inherit; }
+  button {
+    border: 0; border-radius: 10px; padding: .65em 1.1em; cursor: pointer;
+    background: var(--panel-2); transition: background .15s, transform .05s;
+  }
+  button:hover { background: #2a2f3a; }
+  button:active { transform: scale(.97); }
+  button.primary { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  button.primary:hover { background: #6ee7a0; }
+  input {
+    background: var(--bg); border: 1px solid #2c313c; border-radius: 8px;
+    padding: .5em .6em; width: 100%; min-width: 0;
+  }
+  input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+  .muted { color: var(--muted); }
+
+  /* ---------- Setup ---------- */
+  #setup { max-width: 760px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: 1.8rem; margin: 0 0 4px; letter-spacing: -.02em; }
+  .card { background: var(--panel); border-radius: var(--radius); padding: 18px; margin-top: 18px; }
+  .row { display: flex; gap: 12px; align-items: end; flex-wrap: wrap; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label { font-size: .78rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  .stepper { display: flex; align-items: center; gap: 8px; }
+  .stepper button { width: 40px; height: 40px; padding: 0; font-size: 1.3rem; }
+  .stepper output { min-width: 2ch; text-align: center; font-size: 1.4rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .players { display: grid; gap: 10px; margin-top: 12px; }
+  .player-row {
+    display: grid; grid-template-columns: 28px 1fr 84px 84px 84px; gap: 8px; align-items: center;
+    background: var(--panel-2); border-radius: 10px; padding: 8px 10px;
+  }
+  .player-row .dot { width: 16px; height: 16px; border-radius: 50%; justify-self: center; }
+  .player-head { background: none; padding: 0 10px; font-size: .75rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  @media (max-width: 560px) {
+    .player-row { grid-template-columns: 22px 1fr 1fr 1fr; }
+    .player-row .name { grid-column: 2 / -1; }
+    .player-head { display: none; }
+    .player-row input[data-k]:not(.name)::placeholder { color: var(--muted); }
+  }
+  .actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; flex-wrap: wrap; }
+  .hint { font-size: .85rem; margin-top: 10px; }
+
+  /* ---------- Game ---------- */
+  #game { display: flex; flex-direction: column; height: 100vh; height: 100dvh; padding: 12px; gap: 12px; }
+  .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .toolbar .spacer { flex: 1; }
+  .toolbar .turn-count { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .board {
+    flex: 1; display: grid; gap: 10px; min-height: 0;
+    grid-template-columns: repeat(var(--cols), 1fr);
+    grid-auto-rows: 1fr;
+  }
+  .clock {
+    position: relative; border-radius: var(--radius); background: var(--panel);
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
+    padding: 10px; min-height: 0; overflow: hidden; opacity: .55;
+    border: 3px solid transparent; transition: opacity .25s, background .25s, border-color .25s, transform .25s;
+    user-select: none;
+  }
+  .clock .stripe { position: absolute; inset: 0 0 auto 0; height: 6px; background: var(--c); }
+  .clock .pname { font-weight: 600; font-size: clamp(.9rem, 2.2vmin, 1.4rem); color: var(--muted); text-align: center; overflow-wrap: anywhere; }
+  .clock .time { font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.02em; font-size: clamp(1.6rem, 7vmin, 5rem); line-height: 1.1; }
+  .clock .meta { font-size: .8rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .clock .badge { position: absolute; top: 12px; right: 12px; font-size: .7rem; font-weight: 700; letter-spacing: .08em; padding: 3px 8px; border-radius: 99px; background: var(--c); color: #000; display: none; }
+  .clock.next .badge.next-b { display: block; background: var(--panel-2); color: var(--muted); }
+
+  .clock.active {
+    opacity: 1; cursor: pointer;
+    background: color-mix(in srgb, var(--c) 22%, var(--panel));
+    border-color: var(--c);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--c) 25%, transparent), 0 10px 40px color-mix(in srgb, var(--c) 30%, transparent);
+  }
+  .clock.active .pname { color: var(--text); }
+  .clock.active .badge.turn-b { display: block; }
+  .clock.active.running .time { animation: none; }
+  .clock.low .time { color: var(--warn); }
+  .clock.active.low.running { animation: pulse 1s ease-in-out infinite; }
+  .clock.out { opacity: .4; }
+  .clock.out .time { color: var(--danger); text-decoration: line-through; }
+  .clock.out .badge.out-b { display: block; background: var(--danger); }
+  .clock.flash { animation: flash .6s ease-out; }
+  @keyframes flash {
+    0% { transform: scale(1.04); box-shadow: 0 0 0 14px color-mix(in srgb, var(--c) 50%, transparent); }
+    100% { transform: scale(1); }
+  }
+  @keyframes pulse { 50% { background: color-mix(in srgb, var(--warn) 18%, var(--panel)); } }
+
+  /* Single dominant layout: active player large on top, others in a row */
+  .board.focus { grid-template-columns: repeat(var(--others), 1fr); grid-template-rows: 2.2fr 1fr; }
+  .board.focus .clock.active { grid-column: 1 / -1; grid-row: 1; }
+  .board.focus .clock.active .time { font-size: clamp(3rem, 16vmin, 11rem); }
+  .board.focus .clock.active .pname { font-size: clamp(1.1rem, 4vmin, 2.2rem); }
+
+  .pass {
+    border-radius: var(--radius); padding: 18px; font-size: 1.25rem; font-weight: 700;
+    background: var(--cur, var(--accent)); color: #000;
+  }
+  .pass:hover { background: var(--cur, var(--accent)); filter: brightness(1.08); }
+  .pass small { display: block; font-weight: 500; font-size: .8rem; opacity: .7; }
+
+  /* Turn-over banner */
+  .banner {
+    position: fixed; inset: 0; display: grid; place-items: center; pointer-events: none;
+    opacity: 0; z-index: 10;
+  }
+  .banner div {
+    background: var(--c); color: #000; font-weight: 800; padding: 18px 34px; border-radius: 99px;
+    font-size: clamp(1.4rem, 6vmin, 3rem); box-shadow: 0 20px 60px rgba(0,0,0,.5);
+    max-width: 90vw; text-align: center; overflow-wrap: anywhere;
+  }
+  .banner.show { animation: banner 1.1s ease-out; }
+  @keyframes banner {
+    0% { opacity: 0; transform: scale(.8); }
+    15% { opacity: 1; transform: scale(1); }
+    70% { opacity: 1; }
+    100% { opacity: 0; transform: scale(1.05); }
+  }
+  .overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.6); display: grid; place-items: center; z-index: 20; padding: 16px;
+  }
+  .overlay .card { max-width: 420px; text-align: center; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+
+<!-- ================= SETUP ================= -->
+<section id="setup">
+  <h1>Turn Clock</h1>
+  <div class="muted">A chess clock for any board game, 1–10 players.</div>
+
+  <div class="card">
+    <div class="row">
+      <div class="field">
+        <label>Players</label>
+        <div class="stepper">
+          <button id="minus" aria-label="Fewer players">−</button>
+          <output id="count">2</output>
+          <button id="plus" aria-label="More players">+</button>
+        </div>
+      </div>
+      <div class="field" style="flex:1;min-width:110px">
+        <label for="allTime">Start time (min)</label>
+        <input id="allTime" type="number" min="0" step="0.5" value="10">
+      </div>
+      <div class="field" style="flex:1;min-width:110px">
+        <label for="allInc">Increment (sec)</label>
+        <input id="allInc" type="number" min="0" step="1" value="5">
+      </div>
+      <button id="applyAll">Apply to all</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="player-row player-head">
+      <span></span><span>Name (turn order)</span><span>Min</span><span>Sec</span><span>+Inc s</span>
+    </div>
+    <div class="players" id="players"></div>
+    <div class="hint muted">Each player can have their own time and increment. Increment is added after each completed turn.</div>
+  </div>
+
+  <div class="actions">
+    <button class="primary" id="start">Start game</button>
+  </div>
+</section>
+
+<!-- ================= GAME ================= -->
+<section id="game" hidden>
+  <div class="toolbar">
+    <button id="pauseBtn">Start</button>
+    <button id="undoBtn" title="Give the turn back to the previous player">↶ Undo turn</button>
+    <span class="spacer"></span>
+    <span class="turn-count" id="turnCount"></span>
+    <button id="soundBtn" title="Toggle sound">🔊</button>
+    <button id="setupBtn">Setup</button>
+  </div>
+  <div class="board" id="board"></div>
+  <button class="pass" id="passBtn">End turn <small>Space / Enter · or tap the active clock</small></button>
+</section>
+
+<div class="banner" id="banner"><div></div></div>
+
+<div class="overlay" id="confirm" hidden>
+  <div class="card">
+    <h2 style="margin-top:0">Leave game?</h2>
+    <p class="muted">The current game will be lost.</p>
+    <div class="actions" style="justify-content:center">
+      <button id="confirmNo">Keep playing</button>
+      <button class="primary" id="confirmYes">Back to setup</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const COLORS = ['#4ade80','#60a5fa','#f472b6','#facc15','#a78bfa','#fb923c','#2dd4bf','#f87171','#a3e635','#e879f9'];
+  const MAX = 10, MIN = 1;
+  const $ = s => document.querySelector(s);
+
+  // ---------- Setup state ----------
+  let config = load() || {
+    players: [
+      { name: 'Player 1', min: 10, sec: 0, inc: 5 },
+      { name: 'Player 2', min: 10, sec: 0, inc: 5 },
+    ],
+  };
+
+  function load() { try { return JSON.parse(localStorage.getItem('turnclock')); } catch { return null; } }
+  function save() { try { localStorage.setItem('turnclock', JSON.stringify(config)); } catch {} }
+
+  function renderSetup() {
+    $('#count').textContent = config.players.length;
+    const wrap = $('#players');
+    wrap.innerHTML = '';
+    config.players.forEach((p, i) => {
+      const row = document.createElement('div');
+      row.className = 'player-row';
+      row.innerHTML = `
+        <span class="dot" style="background:${COLORS[i]}"></span>
+        <input class="name" data-k="name" maxlength="24" placeholder="Player ${i + 1}">
+        <input data-k="min" type="number" min="0" step="1" placeholder="min" aria-label="Minutes">
+        <input data-k="sec" type="number" min="0" max="59" step="1" placeholder="sec" aria-label="Seconds">
+        <input data-k="inc" type="number" min="0" step="1" placeholder="+inc s" aria-label="Increment seconds">`;
+      row.querySelectorAll('input').forEach(inp => {
+        const k = inp.dataset.k;
+        inp.value = p[k];
+        inp.addEventListener('input', () => {
+          p[k] = k === 'name' ? inp.value : Math.max(0, parseFloat(inp.value) || 0);
+          save();
+        });
+      });
+      wrap.appendChild(row);
+    });
+  }
+
+  function setCount(n) {
+    n = Math.min(MAX, Math.max(MIN, n));
+    const ps = config.players;
+    while (ps.length < n) {
+      const last = ps[ps.length - 1] || { min: 10, sec: 0, inc: 5 };
+      ps.push({ name: `Player ${ps.length + 1}`, min: last.min, sec: last.sec, inc: last.inc });
+    }
+    ps.length = n;
+    save(); renderSetup();
+  }
+
+  $('#minus').onclick = () => setCount(config.players.length - 1);
+  $('#plus').onclick = () => setCount(config.players.length + 1);
+  $('#applyAll').onclick = () => {
+    const t = Math.max(0, parseFloat($('#allTime').value) || 0);
+    const inc = Math.max(0, parseFloat($('#allInc').value) || 0);
+    config.players.forEach(p => {
+      p.min = Math.floor(t);
+      p.sec = Math.round((t - Math.floor(t)) * 60);
+      p.inc = inc;
+    });
+    save(); renderSetup();
+  };
+
+  // ---------- Game state ----------
+  let game = null;   // { players:[{name,color,ms,inc,out,turns}], cur, running, last, turn, history }
+  let raf = 0;
+  let sound = true;
+  let wakeLock = null;
+
+  function startGame() {
+    game = {
+      players: config.players.map((p, i) => ({
+        name: (p.name || '').trim() || `Player ${i + 1}`,
+        color: COLORS[i],
+        ms: ((+p.min || 0) * 60 + (+p.sec || 0)) * 1000,
+        inc: (+p.inc || 0) * 1000,
+        out: false,
+        turns: 0,
+      })),
+      cur: 0, running: false, last: 0, turn: 1, history: [],
+    };
+    $('#setup').hidden = true;
+    $('#game').hidden = false;
+    buildBoard();
+    render();
+  }
+
+  function buildBoard() {
+    const board = $('#board');
+    const n = game.players.length;
+    board.innerHTML = '';
+    // Layout: few players -> equal grid; many -> active big on top
+    const focus = n >= 3;
+    board.classList.toggle('focus', focus);
+    board.style.setProperty('--others', Math.max(1, n - 1));
+    board.style.setProperty('--cols', n <= 2 ? n : Math.ceil(Math.sqrt(n)));
+    game.players.forEach((p, i) => {
+      const el = document.createElement('div');
+      el.className = 'clock';
+      el.style.setProperty('--c', p.color);
+      el.innerHTML = `
+        <div class="stripe"></div>
+        <span class="badge turn-b">TURN</span>
+        <span class="badge next-b">NEXT</span>
+        <span class="badge out-b">OUT OF TIME</span>
+        <div class="pname"></div>
+        <div class="time"></div>
+        <div class="meta"></div>`;
+      el.querySelector('.pname').textContent = p.name;
+      el.addEventListener('click', () => { if (i === game.cur) $('#passBtn').click(); });
+      board.appendChild(el);
+      p.el = el;
+    });
+  }
+
+  function fmt(ms) {
+    const neg = ms < 0; ms = Math.abs(ms);
+    const total = ms / 1000;
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = Math.floor(total % 60);
+    let out;
+    if (h) out = `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    else if (total < 10) out = `${m}:${String(s).padStart(2, '0')}.${Math.floor((ms % 1000) / 100)}`;
+    else out = `${m}:${String(s).padStart(2, '0')}`;
+    return (neg ? '-' : '') + out;
+  }
+
+  function nextIndex(from) {
+    const n = game.players.length;
+    for (let k = 1; k <= n; k++) {
+      const j = (from + k) % n;
+      if (!game.players[j].out) return j;
+    }
+    return -1;
+  }
+
+  function render() {
+    const nxt = nextIndex(game.cur);
+    const othersInFocus = $('#board').classList.contains('focus');
+    game.players.forEach((p, i) => {
+      const el = p.el;
+      el.classList.toggle('active', i === game.cur);
+      el.classList.toggle('running', i === game.cur && game.running);
+      el.classList.toggle('next', i === nxt && i !== game.cur);
+      el.classList.toggle('out', p.out);
+      el.classList.toggle('low', !p.out && p.ms < 30000 && p.ms > 0);
+      el.querySelector('.time').textContent = fmt(Math.max(0, p.ms));
+      el.querySelector('.meta').textContent = `+${p.inc / 1000}s · ${p.turns} turn${p.turns === 1 ? '' : 's'}`;
+      // In focus layout, keep others in turn order after the active player
+      if (othersInFocus) {
+        const n = game.players.length;
+        el.style.order = i === game.cur ? 0 : ((i - game.cur + n) % n);
+      } else el.style.order = '';
+    });
+    const cur = game.players[game.cur];
+    const alive = game.players.filter(p => !p.out).length;
+    $('#game').style.setProperty('--cur', cur.color);
+    $('#passBtn').firstChild.textContent = game.running
+      ? `${cur.name}: end turn → ${nxt >= 0 && nxt !== game.cur ? game.players[nxt].name : '—'} `
+      : 'Paused — tap Start ';
+    $('#passBtn').disabled = !game.running;
+    $('#passBtn').style.opacity = game.running ? 1 : .5;
+    $('#pauseBtn').textContent = game.running ? '⏸ Pause' : (game.last ? '▶ Resume' : '▶ Start');
+    $('#pauseBtn').className = game.running ? '' : 'primary';
+    $('#undoBtn').disabled = !game.history.length;
+    $('#turnCount').textContent = alive < game.players.length ? `Turn ${game.turn} · ${alive} left` : `Turn ${game.turn}`;
+  }
+
+  function tick(now) {
+    if (!game || !game.running) return;
+    const p = game.players[game.cur];
+    p.ms -= now - game.last;
+    game.last = now;
+    if (p.ms <= 0) {
+      p.ms = 0; p.out = true;
+      beep(220, .5);
+      const nxt = nextIndex(game.cur);
+      if (nxt < 0 || game.players.filter(q => !q.out).length === 0) {
+        game.running = false; render(); return;
+      }
+      // Time-out player is skipped; play continues with the next one
+      switchTo(nxt, false);
+    }
+    render();
+    raf = requestAnimationFrame(tick);
+  }
+
+  function setRunning(on) {
+    if (!game) return;
+    if (on && game.players.every(p => p.out)) return;
+    game.running = on;
+    cancelAnimationFrame(raf);
+    if (on) {
+      game.last = performance.now();
+      raf = requestAnimationFrame(tick);
+      requestWake();
+    } else releaseWake();
+    render();
+  }
+
+  function switchTo(j, addInc) {
+    const p = game.players[game.cur];
+    game.history.push({ cur: game.cur, ms: p.ms, turns: p.turns, turn: game.turn });
+    if (addInc) { p.ms += p.inc; p.turns++; }
+    if (j <= game.cur) game.turn++;
+    game.cur = j;
+    game.last = performance.now();
+    announce();
+  }
+
+  function passTurn() {
+    if (!game || !game.running) return;
+    // Settle elapsed time precisely before handing over
+    const now = performance.now();
+    game.players[game.cur].ms -= now - game.last;
+    game.last = now;
+    const j = nextIndex(game.cur);
+    if (j < 0 || j === game.cur) { beep(660, .08); return; } // only one player left / solo
+    switchTo(j, true);
+    render();
+  }
+
+  // Solo mode: single player — "end turn" just adds increment and counts the turn
+  function passSolo() {
+    const p = game.players[0];
+    if (p.out) return;
+    const now = performance.now();
+    p.ms -= now - game.last; game.last = now;
+    game.history.push({ cur: 0, ms: p.ms, turns: p.turns, turn: game.turn });
+    p.ms += p.inc; p.turns++; game.turn++;
+    announce(); render();
+  }
+
+  function undo() {
+    if (!game || !game.history.length) return;
+    const h = game.history.pop();
+    // Revert increment on the previous player and give them the turn back
+    const p = game.players[h.cur];
+    p.ms = h.ms; p.turns = h.turns; p.out = false;
+    game.cur = h.cur; game.turn = h.turn;
+    game.last = performance.now();
+    render();
+  }
+
+  function announce() {
+    const p = game.players[game.cur];
+    p.el.classList.remove('flash'); void p.el.offsetWidth; p.el.classList.add('flash');
+    const b = $('#banner');
+    b.style.setProperty('--c', p.color);
+    b.firstElementChild.textContent = `${p.name}'s turn`;
+    b.classList.remove('show'); void b.offsetWidth; b.classList.add('show');
+    beep(880, .09);
+    if (navigator.vibrate) navigator.vibrate(60);
+  }
+
+  // ---------- Sound ----------
+  let actx = null;
+  function beep(freq, dur) {
+    if (!sound) return;
+    try {
+      actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+      const o = actx.createOscillator(), g = actx.createGain();
+      o.frequency.value = freq; o.type = 'sine';
+      g.gain.setValueAtTime(.18, actx.currentTime);
+      g.gain.exponentialRampToValueAtTime(.001, actx.currentTime + dur);
+      o.connect(g).connect(actx.destination);
+      o.start(); o.stop(actx.currentTime + dur);
+    } catch {}
+  }
+
+  // ---------- Keep screen awake ----------
+  async function requestWake() {
+    try { if ('wakeLock' in navigator && !wakeLock) wakeLock = await navigator.wakeLock.request('screen'); } catch {}
+  }
+  function releaseWake() { try { wakeLock && wakeLock.release(); } catch {} wakeLock = null; }
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && game && game.running) { wakeLock = null; requestWake(); }
+  });
+
+  // ---------- Wiring ----------
+  $('#start').onclick = startGame;
+  $('#pauseBtn').onclick = () => setRunning(!game.running);
+  $('#passBtn').onclick = () => game.players.length === 1 ? passSolo() : passTurn();
+  $('#undoBtn').onclick = undo;
+  $('#soundBtn').onclick = e => { sound = !sound; e.currentTarget.textContent = sound ? '🔊' : '🔇'; };
+  $('#setupBtn').onclick = () => { setRunning(false); $('#confirm').hidden = false; };
+  $('#confirmNo').onclick = () => { $('#confirm').hidden = true; };
+  $('#confirmYes').onclick = () => {
+    $('#confirm').hidden = true; game = null;
+    $('#game').hidden = true; $('#setup').hidden = false; renderSetup();
+  };
+
+  document.addEventListener('keydown', e => {
+    if (!game || $('#game').hidden || !$('#confirm').hidden) return;
+    if (e.code === 'Space' || e.code === 'Enter') {
+      e.preventDefault();
+      if (!game.running) setRunning(true);
+      else game.players.length === 1 ? passSolo() : passTurn();
+    } else if (e.key === 'p' || e.key === 'P' || e.code === 'Escape') {
+      setRunning(!game.running);
+    } else if ((e.key === 'z' || e.key === 'Z' || e.code === 'Backspace')) {
+      undo();
+    }
+  });
+
+  renderSetup();
+})();
+</script>
+</body>
+</html>
